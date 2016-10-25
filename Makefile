@@ -5,6 +5,9 @@ PACKAGE_NAME = github.com/lucindo/$(COMMAND_NAME)
 LDFLAGS = -ldflags=-X=main.version=$(VERSION)
 OBJECTS = $(patsubst $(COMMAND_NAME)-windows-amd64%,$(COMMAND_NAME)-windows-amd64%.exe, $(patsubst $(COMMAND_NAME)-windows-386%,$(COMMAND_NAME)-windows-386%.exe, $(patsubst %,$(COMMAND_NAME)-%-v$(VERSION), $(TARGETS))))
 
+devclean: ## Removes lresolver binary (used on development)
+	rm $(COMMAND_NAME)
+
 release: check-env $(OBJECTS) ## Build release binaries (requires VERSION)
 
 clean: check-env ## Remove release binaries
