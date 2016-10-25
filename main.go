@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -50,15 +51,17 @@ func main() {
 	}
 
 	listenAddr := viper.GetString("bind")
-	glog.Infoln("will listen on address: ", listenAddr)
+	glog.Infoln("will listen on address:", listenAddr)
 
-	var servers map[string]*dns.Server
+	servers := make(map[string]*dns.Server)
 
-	for _, net := range []string{"tcp", "udp"} {
+	for _, net := range []string{"udp", "tcp"} {
 		servers[net] = &dns.Server{Addr: listenAddr, Net: net}
 	}
+	dns.HandleFunc(".", resolve)
 	for _, server := range servers {
 		go func(s *dns.Server) {
+			glog.Infoln("starting server", s.Addr, "-", s.Net)
 			if err := s.ListenAndServe(); err != nil {
 				glog.Fatalln("error starting dns server: ", err)
 			}
@@ -70,6 +73,23 @@ func main() {
 	<-sigs
 
 	for _, server := range servers {
+		glog.Infoln("shuting down server", server.Addr, "-", server.Net)
 		server.Shutdown()
 	}
+}
+
+func resolve(w dns.ResponseWriter, req *dns.Msg) {
+	transport := "udp"
+	if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
+		transport = "tcp"
+	}
+	transport = "tcp"
+	glog.Infoln("request:", req, "transport", transport, "endpoint", viper.GetString("nameserver"))
+	client := &dns.Client{Net: transport}
+	resp, _, err := client.Exchange(req, viper.GetString("nameserver"))
+	if err != nil {
+		dns.HandleFailed(w, req)
+		return
+	}
+	w.WriteMsg(resp)
 }
