@@ -1,0 +1,19 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "Wahi4g/9XiHhSLAJ+8jskg71PCU=",
+			"path": "github.com/miekg/dns",
+			"revision": "58f52c57ce9df13460ac68200cef30a008b9c468",
+			"revisionTime": "2016-10-18T06:08:08Z"
+		},
+		{
+			"checksumSHA1": "sRUVbzD9S82ICEK/4qxK0CYCTGg=",
+			"path": "github.com/spf13/viper",
+			"revision": "80ab6657f9ec7e5761f6603320d3d58dfe6970f6",
+			"revisionTime": "2016-10-24T15:49:00Z"
+		}
+	],
+	"rootPath": "github.com/lucindo/lresolver"
+}
