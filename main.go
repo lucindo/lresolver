@@ -4,9 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 
-	_ "github.com/miekg/dns"
+	"github.com/golang/glog"
+	"github.com/miekg/dns"
 	"github.com/spf13/viper"
 )
 
@@ -31,7 +34,7 @@ func usage() {
 func main() {
 	flag.Parse()
 
-	viper.SetDefault("bind", map[string]interface{}{"address": "127.0.0.1", "port": 53})
+	viper.SetDefault("bind", "127.0.0.1:53")
 	if config != "" {
 		viper.SetConfigFile(config)
 	} else {
@@ -42,9 +45,31 @@ func main() {
 
 	err := viper.ReadInConfig()
 	if err != nil {
-		fmt.Errorf("Fatal error config file: %s \n", err)
+		glog.Errorf("Fatal error config file: %s \n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println(viper.Get("bind"))
+	listenAddr := viper.GetString("bind")
+	glog.Infoln("will listen on address: ", listenAddr)
+
+	var servers map[string]*dns.Server
+
+	for _, net := range []string{"tcp", "udp"} {
+		servers[net] = &dns.Server{Addr: listenAddr, Net: net}
+	}
+	for _, server := range servers {
+		go func(s *dns.Server) {
+			if err := s.ListenAndServe(); err != nil {
+				glog.Fatalln("error starting dns server: ", err)
+			}
+		}(server)
+	}
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	<-sigs
+
+	for _, server := range servers {
+		server.Shutdown()
+	}
 }
