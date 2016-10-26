@@ -46,8 +46,13 @@ func main() {
 
 	err := viper.ReadInConfig()
 	if err != nil {
-		glog.Errorf("Fatal error config file: %s \n", err)
+		glog.Errorln("Fatal error config file", err)
 		os.Exit(1)
+	}
+
+	if readConfig() < 1 {
+		glog.Errorln("no name servers configured, exiting")
+		os.Exit(2)
 	}
 
 	listenAddr := viper.GetString("bind")
@@ -74,7 +79,9 @@ func main() {
 
 	for _, server := range servers {
 		glog.Infoln("shuting down server", server.Addr, "-", server.Net)
-		server.Shutdown()
+		if err := server.Shutdown(); err != nil {
+			glog.Errorln("error shuting down server:", err)
+		}
 	}
 }
 
@@ -83,13 +90,20 @@ func resolve(w dns.ResponseWriter, req *dns.Msg) {
 	if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
 		transport = "tcp"
 	}
-	transport = "tcp"
-	glog.Infoln("request:", req, "transport", transport, "endpoint", viper.GetString("nameserver"))
+	nameserver := getNameserver()
+	glog.Infoln("request for", req.Question, "transport", transport, "endpoint", nameserver)
 	client := &dns.Client{Net: transport}
-	resp, _, err := client.Exchange(req, viper.GetString("nameserver"))
+	in, rtt, err := client.Exchange(req, nameserver)
 	if err != nil {
-		dns.HandleFailed(w, req)
+		dns.HandleFailed(w, in)
 		return
 	}
-	w.WriteMsg(resp)
+	glog.Infoln("response:", dns.RcodeToString[in.MsgHdr.Rcode])
+	glog.Infoln("response rtt:", rtt)
+	if len(in.Answer) > 0 {
+		glog.Infoln("response ttl:", in.Answer[0].Header().Ttl)
+	}
+	if err := w.WriteMsg(in); err != nil {
+		glog.Errorln("error writing response to client:", err)
+	}
 }
