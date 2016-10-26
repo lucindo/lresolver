@@ -25,7 +25,7 @@ func init() {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]\n\n", os.Args[0])
-	fmt.Fprintln(os.Stderr, "OPTIONS (all optional):")
+	fmt.Fprintln(os.Stderr, "OPTIONS (none required):")
 	flag.PrintDefaults()
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Unless specified otherwise configuration file will be lresolver.{yml,yaml,json,toml,hcl}")
@@ -82,8 +82,8 @@ func main() {
 
 	servers := make(map[string]*dns.Server)
 
-	for _, net := range getTransports() {
-		servers[net] = &dns.Server{Addr: listenAddr, Net: net}
+	for _, transport := range getTransports() {
+		servers[transport] = &dns.Server{Addr: listenAddr, Net: transport}
 	}
 	dns.HandleFunc(".", resolve)
 	for _, server := range servers {
