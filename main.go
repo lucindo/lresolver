@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -26,8 +25,23 @@ func init() {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]\n\n", os.Args[0])
-	fmt.Fprintln(os.Stderr, "OPTIONS:")
+	fmt.Fprintln(os.Stderr, "OPTIONS (all optional):")
 	flag.PrintDefaults()
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Unless specified otherwise configuration file will be lresolver.{yml,yaml,json,toml,hcl}")
+	fmt.Fprintln(os.Stderr, "Path search for configuration file: \"/etc/lresolver/:.\"")
+	fmt.Fprintln(os.Stderr, "Sample configuration (YAML format):")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "# lresolver configuration begin")
+	fmt.Fprintln(os.Stderr, "bind: 127.0.0.1")
+	fmt.Fprintln(os.Stderr, "respect_ttl: true")
+	fmt.Fprintln(os.Stderr, "negative_cache: true")
+	fmt.Fprintln(os.Stderr, "max_cache_ttl: 300")
+	fmt.Fprintln(os.Stderr, "tcp: true")
+	fmt.Fprintln(os.Stderr, "nameservers:")
+	fmt.Fprintln(os.Stderr, "- 8.8.8.8")
+	fmt.Fprintln(os.Stderr, "- 8.8.4.4")
+	fmt.Fprintln(os.Stderr, "# lresolver configuration end")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Printf("%s version %s (runtime: %s)\n", os.Args[0], version, runtime.Version())
 }
@@ -35,7 +49,13 @@ func usage() {
 func main() {
 	flag.Parse()
 
-	viper.SetDefault("bind", "127.0.0.1:53")
+	// defaults
+	viper.SetDefault("bind", "127.0.0.1")
+	viper.SetDefault("tcp", "true")
+	viper.SetDefault("respect_ttl", "true")
+	viper.SetDefault("negative_cache", "true")
+	viper.SetDefault("max_cache_ttl", 300)
+
 	if config != "" {
 		viper.SetConfigFile(config)
 	} else {
@@ -46,21 +66,23 @@ func main() {
 
 	err := viper.ReadInConfig()
 	if err != nil {
-		glog.Errorln("Fatal error config file", err)
+		glog.Errorln("Fatal error reading config file", err)
 		os.Exit(1)
 	}
 
+	glog.Infoln("using configuration file:", viper.ConfigFileUsed())
+
 	if readConfig() < 1 {
-		glog.Errorln("no name servers configured, exiting")
+		glog.Errorln("no DNS servers configured, exiting")
 		os.Exit(2)
 	}
 
-	listenAddr := viper.GetString("bind")
+	listenAddr := fixDNSAddress(viper.GetString("bind"))
 	glog.Infoln("will listen on address:", listenAddr)
 
 	servers := make(map[string]*dns.Server)
 
-	for _, net := range []string{"udp", "tcp"} {
+	for _, net := range getTransports() {
 		servers[net] = &dns.Server{Addr: listenAddr, Net: net}
 	}
 	dns.HandleFunc(".", resolve)
@@ -82,28 +104,5 @@ func main() {
 		if err := server.Shutdown(); err != nil {
 			glog.Errorln("error shuting down server:", err)
 		}
-	}
-}
-
-func resolve(w dns.ResponseWriter, req *dns.Msg) {
-	transport := "udp"
-	if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
-		transport = "tcp"
-	}
-	nameserver := getNameserver()
-	glog.Infoln("request for", req.Question, "transport", transport, "endpoint", nameserver)
-	client := &dns.Client{Net: transport}
-	in, rtt, err := client.Exchange(req, nameserver)
-	if err != nil {
-		dns.HandleFailed(w, in)
-		return
-	}
-	glog.Infoln("response:", dns.RcodeToString[in.MsgHdr.Rcode])
-	glog.Infoln("response rtt:", rtt)
-	if len(in.Answer) > 0 {
-		glog.Infoln("response ttl:", in.Answer[0].Header().Ttl)
-	}
-	if err := w.WriteMsg(in); err != nil {
-		glog.Errorln("error writing response to client:", err)
 	}
 }
