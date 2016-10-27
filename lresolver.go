@@ -5,7 +5,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/golang/glog"
 	"github.com/miekg/dns"
@@ -85,36 +84,62 @@ func getTransports() []string {
 	return []string{"udp"}
 }
 
+func directResolv(req *dns.Msg, transport string, nameserver string) (*dns.Msg, error) {
+	client := &dns.Client{Net: transport}
+	in, _, err := client.Exchange(req, nameserver)
+	return in, err
+}
+
+func broadcastResolv(req *dns.Msg, transport string, usedns string) (*dns.Msg, error) {
+	return nil, nil
+}
+
+func isError(msg *dns.Msg) bool {
+	// NOERROR = 0 (NXDOMAIN = 3)
+	return msg.MsgHdr.Rcode != 0
+}
+
 func resolve(w dns.ResponseWriter, req *dns.Msg) {
-	in := getResponseFromCache(req.Question[0].String())
+	in := getResponseFromCache(dnsMsgToStr(req))
+
 	if in == nil {
+		// not found in cache, first attempt to resolv is
+		// using a nameserver from all possibilites using
+		// round-robin
 		transport := "udp"
 		if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
 			transport = "tcp"
 		}
-		nameserver := getNameServer()
-		glog.Infoln("request for", req.Question, "transport", transport, "endpoint", nameserver)
-		client := &dns.Client{Net: transport}
 		var err error
-		var rtt time.Duration
-		in, rtt, err = client.Exchange(req, nameserver)
-		if err != nil {
-			dns.HandleFailed(w, in)
-			return
+		var nameserver = getNameServer()
+		in, err = directResolv(req, transport, nameserver)
+		// check for connection error or NXDOMAIN
+		if err != nil || isError(in) {
+			// check all nameservers for
+			in, err = broadcastResolv(req, transport, nameserver)
+			if err != nil {
+				// we got network error from all servers
+				dns.HandleFailed(w, in)
+				return
+			}
 		}
-		glog.Infoln("response:", dns.RcodeToString[in.MsgHdr.Rcode])
-		glog.Infoln("response rtt:", rtt)
-		if len(in.Answer) > 0 {
-			glog.Infoln("response ttl:", in.Answer[0].Header().Ttl)
+		// if response is NXDOMAIN we only cache it if
+		// negative_cache is configured
+		if !isError(in) || (isError(in) && servers.negativeCache) {
+			updateCache(dnsMsgToStr(req), in)
 		}
-		updateCache(req.Question[0].String(), in)
 	} else {
-		glog.Infoln("response from cache")
 		in.MsgHdr.Id = req.MsgHdr.Id // huh
 	}
+
 	if err := w.WriteMsg(in); err != nil {
 		glog.Errorln("error writing response to client:", err)
 	}
+}
+
+func dnsMsgToStr(req *dns.Msg) string {
+	// TODO: validate this
+	return req.Question[0].String()
 }
 
 func fixDNSAddress(addr string) string {
