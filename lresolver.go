@@ -17,9 +17,9 @@ type entry struct {
 }
 
 type nameservers struct {
-	respectTTL    bool
 	negativeCache bool
 	maxCacheTTL   int
+	slist         []string // read-only list of servers
 
 	cmu   sync.RWMutex
 	cache map[string]entry
@@ -35,12 +35,13 @@ var (
 
 func readConfig() int {
 	nservers := viper.GetStringSlice("nameservers")
-	servers = &nameservers{sring: ring.New(len(nservers))}
+	servers = &nameservers{sring: ring.New(len(nservers)), slist: make([]string, len(nservers))}
 	for i := 0; i < servers.sring.Len(); i++ {
-		servers.sring.Value = fixDNSAddress(nservers[i])
+		nameserver := fixDNSAddress(nservers[i])
+		servers.sring.Value = nameserver
 		servers.sring = servers.sring.Next()
+		servers.slist[i] = nameserver
 	}
-	servers.respectTTL = viper.GetBool("respect_ttl")
 	servers.negativeCache = viper.GetBool("negative_cache")
 	servers.maxCacheTTL = viper.GetInt("max_cache_ttl")
 	servers.cache = make(map[string]entry)
@@ -91,6 +92,12 @@ func directResolv(req *dns.Msg, transport string, nameserver string) (*dns.Msg, 
 }
 
 func broadcastResolv(req *dns.Msg, transport string, usedns string) (*dns.Msg, error) {
+	for _, nameserver := range servers.slist {
+		if nameserver == usedns {
+			// skip already used nameserver
+			continue
+		}
+	}
 	return nil, nil
 }
 
