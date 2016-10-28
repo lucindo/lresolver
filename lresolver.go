@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/miekg/dns"
@@ -13,12 +14,12 @@ import (
 
 type entry struct {
 	response *dns.Msg
-	ttl      uint32
+	expire   int64
 }
 
 type nameservers struct {
 	negativeCache bool
-	maxCacheTTL   int
+	maxCacheTTL   int64
 	slist         []string // read-only list of servers
 
 	cmu   sync.RWMutex
@@ -43,9 +44,17 @@ func readConfig() int {
 		servers.slist[i] = nameserver
 	}
 	servers.negativeCache = viper.GetBool("negative_cache")
-	servers.maxCacheTTL = viper.GetInt("max_cache_ttl")
+	servers.maxCacheTTL = viper.GetInt64("max_cache_ttl")
 	servers.cache = make(map[string]entry)
 	return servers.sring.Len()
+}
+
+func dumpConfig() {
+	glog.Infoln("config: bind", viper.GetString("bind"))
+	glog.Infoln("config: tcp", viper.GetBool("tcp"))
+	glog.Infoln("config: nameservers", servers.slist)
+	glog.Infoln("config: negative_cache", servers.negativeCache)
+	glog.Infoln("config: max_cache_ttl", servers.maxCacheTTL)
 }
 
 func getNameServer() string {
@@ -62,20 +71,37 @@ func getResponseFromCache(question string) *dns.Msg {
 	servers.cmu.RLock()
 	defer servers.cmu.RUnlock()
 	if value, ok := servers.cache[question]; ok {
-		// TODO: check for TTL
+		if value.expire < time.Now().Unix() {
+			// remove from cache now
+			// TODO: return cached value and update cache on a goroutine
+			glog.Infoln("expiring cache")
+			delete(servers.cache, question)
+			return nil
+		}
 		return value.response
 	}
 	return nil
 }
 
 func updateCache(question string, response *dns.Msg) {
-	var ttl uint32
+	// we respect TTL as long as it is lower than max_cache_ttl
+	now := time.Now().Unix()
+	exp := now + servers.maxCacheTTL
 	if len(response.Answer) > 0 {
-		ttl = response.Answer[0].Header().Ttl
+		ttlexp := now + int64(response.Answer[0].Header().Ttl)
+		if ttlexp < exp {
+			exp = ttlexp
+		}
 	}
 	servers.cmu.Lock()
 	defer servers.cmu.Unlock()
-	servers.cache[question] = entry{response: response, ttl: ttl}
+	servers.cache[question] = entry{response: response, expire: exp}
+}
+
+func clearCache() {
+	servers.cmu.Lock()
+	defer servers.cmu.Unlock()
+	servers.cache = make(map[string]entry)
 }
 
 func getTransports() []string {
@@ -87,18 +113,43 @@ func getTransports() []string {
 
 func directResolv(req *dns.Msg, transport string, nameserver string) (*dns.Msg, error) {
 	client := &dns.Client{Net: transport}
+	glog.Infoln("trying to resolv", req.Question, "using", nameserver)
 	in, _, err := client.Exchange(req, nameserver)
 	return in, err
 }
 
 func broadcastResolv(req *dns.Msg, transport string, usedns string) (*dns.Msg, error) {
+	total := len(servers.slist) - 1
+	resp := make([]*dns.Msg, total)
+	errs := make([]error, total)
+	var wg sync.WaitGroup
+	actual := 0
 	for _, nameserver := range servers.slist {
 		if nameserver == usedns {
 			// skip already used nameserver
+			glog.Infoln("used nameserver", usedns, "skipping", nameserver)
 			continue
 		}
+		wg.Add(1)
+		go func(pos int, ns string) {
+			defer wg.Done()
+			in, err := directResolv(req, transport, ns)
+			resp[pos] = in
+			errs[pos] = err
+		}(actual, nameserver)
+		actual++
 	}
-	return nil, nil
+	// wait all to finish
+	wg.Wait()
+	// return first valid no-error response
+	erroridx := 0
+	for i := 0; i < total; i++ {
+		if errs[i] == nil && !isError(resp[i]) {
+			return resp[i], nil
+		}
+		erroridx = i
+	}
+	return resp[erroridx], errs[erroridx]
 }
 
 func isError(msg *dns.Msg) bool {
@@ -107,6 +158,11 @@ func isError(msg *dns.Msg) bool {
 }
 
 func resolve(w dns.ResponseWriter, req *dns.Msg) {
+	if len(req.Question) == 0 {
+		dns.HandleFailed(w, req)
+		return
+	}
+
 	in := getResponseFromCache(dnsMsgToStr(req))
 
 	if in == nil {
@@ -125,17 +181,19 @@ func resolve(w dns.ResponseWriter, req *dns.Msg) {
 			// check all nameservers for
 			in, err = broadcastResolv(req, transport, nameserver)
 			if err != nil {
-				// we got network error from all servers
-				dns.HandleFailed(w, in)
+				// we got network error from all servers ()
+				dns.HandleFailed(w, req)
 				return
 			}
 		}
 		// if response is NXDOMAIN we only cache it if
 		// negative_cache is configured
 		if !isError(in) || (isError(in) && servers.negativeCache) {
+			glog.Infoln("updating cache: valid result")
 			updateCache(dnsMsgToStr(req), in)
 		}
 	} else {
+		glog.Infoln("returning cached result")
 		in.MsgHdr.Id = req.MsgHdr.Id // huh
 	}
 

@@ -75,6 +75,8 @@ func main() {
 		os.Exit(2)
 	}
 
+	dumpConfig()
+
 	listenAddr := fixDNSAddress(viper.GetString("bind"))
 	glog.Infoln("will listen on address:", listenAddr)
 
@@ -94,9 +96,22 @@ func main() {
 	}
 
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	<-sigs
+	done := make(chan bool, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1)
+	go func() {
+		for sig := range sigs {
+			switch sig {
+			case syscall.SIGUSR1:
+				glog.Infoln("cleaning up cache...")
+				clearCache()
+			default:
+				glog.Info("exiting...")
+				done <- true
+			}
+		}
+	}()
 
+	<-done
 	for _, server := range servers {
 		glog.Infoln("shuting down server", server.Addr, "-", server.Net)
 		if err := server.Shutdown(); err != nil {
