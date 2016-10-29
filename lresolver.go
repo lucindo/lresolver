@@ -18,6 +18,7 @@ type entry struct {
 }
 
 type nameservers struct {
+	cacheOn       bool
 	negativeCache bool
 	maxCacheTTL   int64
 	slist         []string // read-only list of servers
@@ -43,6 +44,7 @@ func parseConfig() int {
 		servers.sring = servers.sring.Next()
 		servers.slist[i] = nameserver
 	}
+	servers.cacheOn = viper.GetBool("cache")
 	servers.negativeCache = viper.GetBool("negative_cache")
 	servers.maxCacheTTL = viper.GetInt64("max_cache_ttl")
 	servers.cache = make(map[string]entry)
@@ -68,6 +70,9 @@ func getNameServer() string {
 }
 
 func getResponseFromCache(question string) *dns.Msg {
+	if !servers.cacheOn {
+		return nil
+	}
 	servers.cmu.RLock()
 	defer servers.cmu.RUnlock()
 	if value, ok := servers.cache[question]; ok {
@@ -84,6 +89,9 @@ func getResponseFromCache(question string) *dns.Msg {
 }
 
 func updateCache(question string, response *dns.Msg) {
+	if !servers.cacheOn {
+		return
+	}
 	// we respect TTL as long as it is lower than max_cache_ttl
 	now := time.Now().Unix()
 	exp := now + servers.maxCacheTTL

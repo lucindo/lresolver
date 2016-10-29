@@ -1,4 +1,5 @@
 bind: 127.0.0.1:5300
+cache: true
 negative_cache: true
 max_cache_ttl: 300
 tcp: true

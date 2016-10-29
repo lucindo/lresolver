@@ -34,6 +34,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "# lresolver configuration begin")
 	fmt.Fprintln(os.Stderr, "bind: 127.0.0.1")
+	fmt.Fprintln(os.Stderr, "cache: true")
 	fmt.Fprintln(os.Stderr, "negative_cache: true")
 	fmt.Fprintln(os.Stderr, "max_cache_ttl: 300")
 	fmt.Fprintln(os.Stderr, "tcp: true")
@@ -51,6 +52,7 @@ func main() {
 	// defaults
 	viper.SetDefault("bind", "127.0.0.1")
 	viper.SetDefault("tcp", "true")
+	viper.SetDefault("cache", "true")
 	viper.SetDefault("negative_cache", "true")
 	viper.SetDefault("max_cache_ttl", 300)
 
