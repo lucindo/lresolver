@@ -111,14 +111,14 @@ func getTransports() []string {
 	return []string{"udp"}
 }
 
-func directResolv(req *dns.Msg, transport string, nameserver string) (*dns.Msg, error) {
+func directResolve(req *dns.Msg, transport string, nameserver string) (*dns.Msg, error) {
 	client := &dns.Client{Net: transport}
 	glog.Infoln("trying to resolv", req.Question, "using", nameserver)
 	in, _, err := client.Exchange(req, nameserver)
 	return in, err
 }
 
-func broadcastResolv(req *dns.Msg, transport string, usedns string) (*dns.Msg, error) {
+func broadcastResolve(req *dns.Msg, transport string, usedns string) (*dns.Msg, error) {
 	total := len(servers.slist) - 1
 	resp := make([]*dns.Msg, total)
 	errs := make([]error, total)
@@ -133,7 +133,7 @@ func broadcastResolv(req *dns.Msg, transport string, usedns string) (*dns.Msg, e
 		wg.Add(1)
 		go func(pos int, ns string) {
 			defer wg.Done()
-			in, err := directResolv(req, transport, ns)
+			in, err := directResolve(req, transport, ns)
 			resp[pos] = in
 			errs[pos] = err
 		}(actual, nameserver)
@@ -175,11 +175,11 @@ func resolve(w dns.ResponseWriter, req *dns.Msg) {
 		}
 		var err error
 		var nameserver = getNameServer()
-		in, err = directResolv(req, transport, nameserver)
+		in, err = directResolve(req, transport, nameserver)
 		// check for connection error or NXDOMAIN
 		if err != nil || isError(in) {
 			// check all nameservers for
-			in, err = broadcastResolv(req, transport, nameserver)
+			in, err = broadcastResolve(req, transport, nameserver)
 			if err != nil {
 				// we got network error from all servers ()
 				dns.HandleFailed(w, req)
