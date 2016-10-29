@@ -1,9 +1,9 @@
 # Makefile from https://github.com/davecheney/httpstat
-TARGETS = linux-386 linux-amd64 linux-arm linux-arm64 darwin-amd64 windows-386 windows-amd64
+TARGETS = linux-386 linux-amd64 linux-arm linux-arm64 darwin-amd64
 COMMAND_NAME = lresolver
 PACKAGE_NAME = github.com/lucindo/$(COMMAND_NAME)
 LDFLAGS = -ldflags=-X=main.version=$(VERSION)
-OBJECTS = $(patsubst $(COMMAND_NAME)-windows-amd64%,$(COMMAND_NAME)-windows-amd64%.exe, $(patsubst $(COMMAND_NAME)-windows-386%,$(COMMAND_NAME)-windows-386%.exe, $(patsubst %,$(COMMAND_NAME)-%-v$(VERSION), $(TARGETS))))
+OBJECTS = $(patsubst %,$(COMMAND_NAME)-%-v$(VERSION), $(TARGETS))
 
 devclean: ## Removes lresolver binary (used on development)
 	rm $(COMMAND_NAME)
