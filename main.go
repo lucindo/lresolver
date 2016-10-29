@@ -62,15 +62,15 @@ func main() {
 		viper.AddConfigPath(".")
 	}
 
+	glog.Infoln("using configuration file:", viper.ConfigFileUsed())
+
 	err := viper.ReadInConfig()
 	if err != nil {
 		glog.Errorln("Fatal error reading config file", err)
 		os.Exit(1)
 	}
 
-	glog.Infoln("using configuration file:", viper.ConfigFileUsed())
-
-	if readConfig() < 1 {
+	if parseConfig() < 1 {
 		glog.Errorln("no DNS servers configured, exiting")
 		os.Exit(2)
 	}

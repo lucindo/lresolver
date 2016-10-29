@@ -34,7 +34,7 @@ var (
 	servers *nameservers
 )
 
-func readConfig() int {
+func parseConfig() int {
 	nservers := viper.GetStringSlice("nameservers")
 	servers = &nameservers{sring: ring.New(len(nservers)), slist: make([]string, len(nservers))}
 	for i := 0; i < servers.sring.Len(); i++ {
