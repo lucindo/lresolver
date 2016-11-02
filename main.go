@@ -9,7 +9,6 @@ import (
 	"syscall"
 
 	"github.com/golang/glog"
-	"github.com/miekg/dns"
 	"github.com/spf13/viper"
 )
 
@@ -82,20 +81,7 @@ func main() {
 	listenAddr := fixDNSAddress(viper.GetString("bind"))
 	glog.Infoln("will listen on address:", listenAddr)
 
-	servers := make(map[string]*dns.Server)
-
-	for _, transport := range getTransports() {
-		servers[transport] = &dns.Server{Addr: listenAddr, Net: transport}
-	}
-	dns.HandleFunc(".", resolve)
-	for _, server := range servers {
-		go func(s *dns.Server) {
-			glog.Infoln("starting server", s.Addr, "-", s.Net)
-			if err := s.ListenAndServe(); err != nil {
-				glog.Fatalln("error starting dns server: ", err)
-			}
-		}(server)
-	}
+	startServers(listenAddr)
 
 	sigs := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
@@ -114,10 +100,5 @@ func main() {
 	}()
 
 	<-done
-	for _, server := range servers {
-		glog.Infoln("shuting down server", server.Addr, "-", server.Net)
-		if err := server.Shutdown(); err != nil {
-			glog.Errorln("error shuting down server:", err)
-		}
-	}
+	stopServers()
 }

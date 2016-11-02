@@ -30,9 +30,10 @@ type nameservers struct {
 	sring *ring.Ring
 }
 
-// TODO: make servers variable thread-safe to implement automatic config reload
 var (
-	servers *nameservers
+	// TODO: make servers variable thread-safe to implement automatic config reload
+	servers    *nameservers
+	dnsServers map[string]*dns.Server
 )
 
 func parseConfig() int {
@@ -57,6 +58,32 @@ func dumpConfig() {
 	glog.Infoln("config: nameservers", servers.slist)
 	glog.Infoln("config: negative_cache", servers.negativeCache)
 	glog.Infoln("config: max_cache_ttl", servers.maxCacheTTL)
+}
+
+func startServers(listenAddr string) {
+	dnsServers := make(map[string]*dns.Server)
+
+	for _, transport := range getTransports() {
+		dnsServers[transport] = &dns.Server{Addr: listenAddr, Net: transport}
+	}
+	dns.HandleFunc(".", resolve)
+	for _, server := range dnsServers {
+		go func(s *dns.Server) {
+			glog.Infoln("starting server", s.Addr, "-", s.Net)
+			if err := s.ListenAndServe(); err != nil {
+				glog.Fatalln("error starting dns server: ", err)
+			}
+		}(server)
+	}
+}
+
+func stopServers() {
+	for _, server := range dnsServers {
+		glog.Infoln("shuting down server", server.Addr, "-", server.Net)
+		if err := server.Shutdown(); err != nil {
+			glog.Errorln("error shuting down server:", err)
+		}
+	}
 }
 
 func getNameServer() string {
