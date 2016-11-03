@@ -9,7 +9,7 @@
 Some features:
 
 - Load balancing using round-robin
-- Try to resolve on all servers (in parallel, if not found on first attempt)
+- **Try to resolve on all servers (in parallel, *if not found on first attempt*)**
 - No limit on the number of DNS servers
 - In-memory cache
 
