@@ -8,9 +8,9 @@
 
 Some features:
 
-- Load balancing by round-robin
+- Load balancing using round-robin
 - Try to resolve on all servers (in parallel, if not found on first attempt)
-- No limit on the number of DNS server
+- No limit on the number of DNS servers
 - In-memory cache
 
 ## Credits
@@ -29,12 +29,12 @@ go get github.com/lucindo/lresolver
 
 ### Configuration
 
-The supported formats for configuration are: YAML, JSON, TOML and HCL. On starting up `lresolver` will try to find the file `lresolver.{yml,yaml,json,toml,hcl}` on `/etc/lresolver/` or the current directory. You can also specify the configuration file with the `-config` flag.
+The supported formats for configuration are: YAML, JSON, TOML and HCL. On starting up `lresolver` will try to find the file `lresolver.{yml,yaml,json,toml,hcl}` in `/etc/lresolver/` or in the current directory. You can also specify the configuration file with the `-config` flag.
 
 Configuration directives:
 
 | Directive       | Required | Default | Description                                 |
-| ----------------|:--------:| -------:|--------------------------------------------:|
+| ----------------|:--------:|:-------:|---------------------------------------------|
 |`bind`           |Yes       |-        | Address to bind the server, e.g `127.0.0.1` |
 |`nameservers`    |Yes       |-        | List of DNS servers                         |
 |`cache`          |No        |`true`   | Turn on/off internal caching                |
@@ -74,14 +74,15 @@ In my production systems I put the `lresolver.yml` in `/etc/lresolver/` director
 
 You can clear the cache by sending an `USR1` signal to the running server.
 
-## To Do & Ideas
+## To Do
 
-- [ ] When using cache updated expired entries in background
+- [ ] Update expired entries in background
 - [ ] Packages for popular Linux distros (deb and rpm)
 - [ ] Statistics on requests and nameservers
 - [ ] Option to replace round-robin to dynamic weighted round-robin based on server's response time
 - [ ] External configuration on `etcd`
 - [ ] Suffix-based request routing
+- [ ] Automatic configuration reload
 
 ## Contributing
 
