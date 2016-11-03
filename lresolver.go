@@ -21,6 +21,7 @@ type nameservers struct {
 	cacheOn       bool
 	negativeCache bool
 	maxCacheTTL   int64
+	canBroadcast  bool
 	slist         []string // read-only list of servers
 
 	cmu   sync.RWMutex
@@ -49,6 +50,7 @@ func parseConfig() int {
 	servers.negativeCache = viper.GetBool("negative_cache")
 	servers.maxCacheTTL = viper.GetInt64("max_cache_ttl")
 	servers.cache = make(map[string]entry)
+	servers.canBroadcast = servers.sring.Len() > 1
 	return servers.sring.Len()
 }
 
@@ -212,7 +214,7 @@ func resolve(w dns.ResponseWriter, req *dns.Msg) {
 		var nameserver = getNameServer()
 		in, err = directResolve(req, transport, nameserver)
 		// check for connection error or NXDOMAIN
-		if err != nil || isError(in) {
+		if (err != nil || isError(in)) && servers.canBroadcast {
 			// check all nameservers for
 			in, err = broadcastResolve(req, transport, nameserver)
 			if err != nil {
